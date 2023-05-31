@@ -24,7 +24,7 @@ impl CanvasCourse {
 #[derive(serde::Deserialize, Clone)]
 struct PartialCanvasAssignment {
     name: String,
-    due_date: Option<String>,
+    due_at: Option<String>,
     html_url: String,
 }
 
@@ -41,7 +41,7 @@ impl CanvasAssignment {
     fn new(partial: PartialCanvasAssignment) -> anyhow::Result<CanvasAssignment> {
         Ok(CanvasAssignment {
             name: partial.name,
-            due_date: match partial.due_date {
+            due_date: match partial.due_at {
                 Some(due_date) => Some(due_date.parse::<DateTime<Local>>()?),
                 None => None,
             },
