@@ -11,8 +11,20 @@ async fn main() {
             .expect("Failed to get `CANVAS_ACCESS_TOKEN` environment variable"),
     );
 
-    let boards = client_api.get_courses().await.expect("Unable to get boards");
-    for board in boards {
-        println!("{}", board.name());
+    let courses = client_api
+        .get_courses()
+        .await
+        .expect("Unable to get boards");
+
+    let todos = client_api.get_todos().await.expect("Unable to get courses");
+
+    println!("\tCourses:");
+    for course in courses {
+        println!("{}", course.name());
+    }
+
+    println!("\n\tTodos:");
+    for todo in todos {
+        println!("{}: {}", todo.assignment().name(), todo.assignment().url());
     }
 }
