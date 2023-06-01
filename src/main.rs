@@ -2,6 +2,7 @@ use crate::canvas::CanvasAPI;
 use std::env;
 
 mod canvas;
+mod trello;
 
 #[tokio::main]
 async fn main() {
@@ -15,6 +16,11 @@ async fn main() {
 
     println!("\n\tTodos:");
     for todo in todos {
-        println!("{}: {}, {}", todo.assignment().name(), todo.assignment().due_date().unwrap(), todo.assignment().url());
+        println!(
+            "{}: {}, {}",
+            todo.assignment().name(),
+            todo.assignment().due_date().unwrap(),
+            todo.assignment().url()
+        );
     }
 }
