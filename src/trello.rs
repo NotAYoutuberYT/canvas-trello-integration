@@ -1,3 +1,6 @@
+use reqwest::{Client, Response};
+use serde_json::{json, Value};
+
 /// represents a Trello board
 #[derive(serde::Deserialize)]
 pub struct TrelloBoard {
@@ -72,7 +75,7 @@ impl TrelloMember {
 pub struct TrelloAPI {
     key: String,
     token: String,
-    post_client: reqwest::Client,
+    post_client: Client,
 }
 
 impl TrelloAPI {
@@ -81,7 +84,7 @@ impl TrelloAPI {
         TrelloAPI {
             key,
             token,
-            post_client: reqwest::Client::new(),
+            post_client: Client::new(),
         }
     }
 
@@ -205,6 +208,29 @@ impl TrelloAPI {
         );
 
         let response = reqwest::get(&url).await?.json::<TrelloMember>().await?;
+        Ok(response)
+    }
+
+    /// sets up a webhook
+    pub async fn setup_webhook(
+        &self,
+        callback_url: &str,
+        id: &str,
+    ) -> Result<Response, reqwest::Error> {
+        let url = format!("https://api.trello.com/1/tokens/{}/webhooks?key={}", self.token, self.key);
+
+        let params = json!({
+            "callbackURL": callback_url,
+            "idModel": id,
+        });
+
+        let client = Client::new();
+        let response = client
+            .post(&url)
+            .json(&params)
+            .send()
+            .await?;
+
         Ok(response)
     }
 }

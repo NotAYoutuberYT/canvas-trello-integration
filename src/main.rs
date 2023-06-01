@@ -1,4 +1,5 @@
 use crate::canvas::CanvasAPI;
+use crate::trello::TrelloAPI;
 use std::env;
 
 mod canvas;
@@ -7,20 +8,21 @@ mod trello;
 #[tokio::main]
 async fn main() {
     // build canvas api
-    let client_api = CanvasAPI::new(
+    let canvas_api = CanvasAPI::new(
         env::var("CANVAS_ACCESS_TOKEN")
             .expect("Failed to get `CANVAS_ACCESS_TOKEN` environment variable"),
     );
 
-    let todos = client_api.get_todos().await.expect("Unable to get courses");
+    let trello_api = TrelloAPI::new(
+        env::var("TRELLO_API_KEY").expect("Failed to get `TRELLO_API_KEY` environment variable"),
+        env::var("TRELLO_API_TOKEN")
+            .expect("Failed to get `TRELLO_API_TOKEN` environment variable"),
+    );
 
-    println!("\n\tTodos:");
-    for todo in todos {
-        println!(
-            "{}: {}, {}",
-            todo.assignment().name(),
-            todo.assignment().due_date().unwrap(),
-            todo.assignment().url()
-        );
-    }
+    println!(
+        "{:?}",
+        trello_api
+            .setup_webhook("https://sample.url/trellowebhook", "sample")
+            .await
+    );
 }
