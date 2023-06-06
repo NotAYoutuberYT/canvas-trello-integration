@@ -212,25 +212,30 @@ impl TrelloAPI {
     }
 
     /// sets up a webhook
-    pub async fn setup_webhook(
-        &self,
-        callback_url: &str,
-        id: &str,
-    ) -> Result<Response, reqwest::Error> {
-        let url = format!("https://api.trello.com/1/tokens/{}/webhooks?key={}", self.token, self.key);
+    pub async fn setup_webhook(&self, callback_url: &str, id: &str) -> Result<(), anyhow::Error> {
+        let client = Client::new();
+        let url = format!("https://api.trello.com/1/tokens/{}/webhooks/", self.token);
 
-        let params = json!({
+        let payload = json!({
             "callbackURL": callback_url,
             "idModel": id,
         });
 
-        let client = Client::new();
         let response = client
-            .post(&url)
-            .json(&params)
+            .post(url)
+            .query(&[("key", self.key.clone())])
+            .json(&payload)
             .send()
             .await?;
 
-        Ok(response)
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            Err(anyhow::Error::msg(format!(
+                "Failed to register webhook. Status: {}.\nResponse text: {:?}",
+                response.status(),
+                response.text().await?,
+            )))
+        }
     }
 }
