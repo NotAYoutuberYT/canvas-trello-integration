@@ -2,7 +2,7 @@ use reqwest::{Client, Response};
 use serde_json::{json, Value};
 
 /// represents a Trello board
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Clone)]
 pub struct TrelloBoard {
     id: String,
     name: String,
@@ -13,6 +13,11 @@ impl TrelloBoard {
     /// returns the board's name
     pub fn name(&self) -> String {
         self.name.clone()
+    }
+
+    /// returns the board's id
+    pub fn id(&self) -> String {
+        self.id.clone()
     }
 }
 
@@ -72,10 +77,11 @@ impl TrelloMember {
 }
 
 /// a basic structure that represents a Trello api
+#[derive(Clone)]
 pub struct TrelloAPI {
     key: String,
     token: String,
-    post_client: Client,
+    client: Client,
 }
 
 impl TrelloAPI {
@@ -84,7 +90,7 @@ impl TrelloAPI {
         TrelloAPI {
             key,
             token,
-            post_client: Client::new(),
+            client: Client::new(),
         }
     }
 
@@ -97,7 +103,13 @@ impl TrelloAPI {
         );
 
         // get a response from the api and return it
-        let response = reqwest::get(&url).await?.json::<Vec<TrelloBoard>>().await?;
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await?
+            .json::<Vec<TrelloBoard>>()
+            .await?;
         Ok(response)
     }
 
@@ -129,7 +141,13 @@ impl TrelloAPI {
         );
 
         // get a response from the api and return it
-        let response = reqwest::get(&url).await?.json::<Vec<TrelloList>>().await?;
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await?
+            .json::<Vec<TrelloList>>()
+            .await?;
         Ok(response)
     }
 
@@ -162,7 +180,13 @@ impl TrelloAPI {
         );
 
         // get a response from the url and return it
-        let response = reqwest::get(&url).await?.json::<Vec<TrelloCard>>().await?;
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await?
+            .json::<Vec<TrelloCard>>()
+            .await?;
         Ok(response)
     }
 
@@ -178,7 +202,35 @@ impl TrelloAPI {
         );
 
         // get a response from the url and return it
-        let response = reqwest::get(&url).await?.json::<Vec<TrelloCard>>().await?;
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await?
+            .json::<Vec<TrelloCard>>()
+            .await?;
+        Ok(response)
+    }
+
+    /// gets all the cards of a board
+    pub async fn get_cards_in_board(
+        &self,
+        board: &TrelloBoard,
+    ) -> Result<Vec<TrelloCard>, reqwest::Error> {
+        // get the url to make the request to
+        let url = format!(
+            "https://api.trello.com/1/boards/{}/cards?key={}&token={}&members=true",
+            board.id, self.key, self.token
+        );
+
+        // get a response from the url and return it
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await?
+            .json::<Vec<TrelloCard>>()
+            .await?;
         Ok(response)
     }
 
@@ -195,7 +247,7 @@ impl TrelloAPI {
         );
 
         // make the post
-        self.post_client.post(&url).send().await?;
+        self.client.post(&url).send().await?;
         Ok(())
     }
 
@@ -207,13 +259,18 @@ impl TrelloAPI {
             id, self.key, self.token
         );
 
-        let response = reqwest::get(&url).await?.json::<TrelloMember>().await?;
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await?
+            .json::<TrelloMember>()
+            .await?;
         Ok(response)
     }
 
     /// sets up a webhook
-    pub async fn setup_webhook(&self, callback_url: &str, id: &str) -> Result<(), anyhow::Error> {
-        let client = Client::new();
+    pub async fn setup_webhook(&self, callback_url: &str, id: &str) -> anyhow::Result<()> {
         let url = format!("https://api.trello.com/1/tokens/{}/webhooks/", self.token);
 
         let payload = json!({
@@ -221,20 +278,24 @@ impl TrelloAPI {
             "idModel": id,
         });
 
-        let response = client
+        let response = self
+            .client
             .post(url)
             .query(&[("key", self.key.clone())])
             .json(&payload)
             .send()
             .await?;
 
-        if response.status().is_success() {
+        let status = response.status();
+        let text = response.text().await?;
+
+        // if the creation succeeded or the webhook already exists, return ok
+        if status.is_success() || text.contains("already exists") {
             Ok(())
         } else {
             Err(anyhow::Error::msg(format!(
                 "Failed to register webhook. Status: {}.\nResponse text: {:?}",
-                response.status(),
-                response.text().await?,
+                status, text,
             )))
         }
     }

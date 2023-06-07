@@ -1,21 +1,19 @@
 use crate::canvas::CanvasAPI;
-use crate::trello::{TrelloAPI, TrelloCard};
-use actix_web::{rt, web, App, HttpResponse, HttpServer, Responder};
+use crate::persistent_info::PersistentInfo;
+use crate::trello::TrelloAPI;
+use crate::web_handlers::todo_board_handler;
+use actix_web::web::Data;
+use actix_web::{rt, web, App, HttpResponse, HttpServer};
 use anyhow::Context;
-use reqwest::StatusCode;
-use std::time::Duration;
-use std::{env, thread};
+use std::env;
+use std::io::Read;
+use std::sync::Mutex;
+use tokio::net::windows::named_pipe::PipeEnd::Client;
 
 mod canvas;
+mod persistent_info;
 mod trello;
-
-async fn webhook_handler() -> impl Responder {
-    println!("Received webhook event");
-
-    // Handle the incoming event according to your application's requirements
-
-    HttpResponse::Ok().finish() // Respond with "OK" to acknowledge receipt of the webhook
-}
+mod web_handlers;
 
 #[actix_web::main]
 async fn main() -> anyhow::Result<()> {
@@ -41,10 +39,22 @@ async fn main() -> anyhow::Result<()> {
     // get server ip
     let ip = env::var("PUBLIC_IP").expect("Failed to get `PUBLIC_IP` environment variable");
 
+    // setup persistent data
+    println!("Getting Trello information...");
+    let todo_board = trello_api.get_board("To-Dos").await.unwrap().unwrap();
+    let persistent_info = PersistentInfo::new(&todo_board, &trello_api, ip.as_str(), port);
+    let data = Data::new(Mutex::new(persistent_info.clone()));
+
     // create a server
     println!("Starting HTTP server...");
-    let server = HttpServer::new(|| App::new().route("/trellocallbacks", web::post().to(webhook_handler)).route("/trellocallbacks", web::head().to(HttpResponse::Ok)))
-        .workers(5)
+
+    let data_clone = data.clone();
+    let server = HttpServer::new(move || App::new()
+            .app_data(Data::clone(&data_clone))
+            .route("/trellocallbacks/todo-board", web::post().to(todo_board_handler))
+            .route("/trellocallbacks/todo-board", web::head().to(HttpResponse::Ok))
+            .route("/", web::head().to(HttpResponse::Ok)))
+        .workers(4)
         .bind(("0.0.0.0", port))
         .with_context(|| {
             "Unable to bind server (probably due to incorrect PUBLIC_IP or TRELLO_CANVAS_PORT environment variables)"
@@ -55,24 +65,31 @@ async fn main() -> anyhow::Result<()> {
 
     // verify server is running properly
     println!("Ensuring server is running... (if this takes longer than a few seconds, confirm the TRELLO_CANVAS_PORT and PUBLIC_IP environment variables are correct)");
-    reqwest::get(format!("http://localhost:{port}/trellocallbacks/"))
+    let temp_client = reqwest::Client::new();
+    let response = temp_client
+        .head(format!("http://localhost:{port}/"))
+        .send()
         .await
         .with_context(|| "Failed to validate HTTP server")?;
-    println!("Server verified! Beginning process...\n\n\tLog:");
+    if !response.status().is_success() {
+        return Err(anyhow::Error::msg(
+            "Local server gave error when validating, terminating process...",
+        ));
+    }
 
-    // debug atm, prints an attempt to start a webhook
-    println!(
-        "{:?}",
-        trello_api
-            .setup_webhook(
-                format!("http://{ip}:{port}/trellocallbacks").as_str(),
-                "6477abd6c96004ac36c58cbe"
-            )
-            .await
-    );
+    // set up webhooks
+    println!("Setting up initial webhooks...");
+    persistent_info.setup_webhooks().await?;
+    drop(persistent_info);
+
+    // wait until input is given
+    println!("Ready to begin, press enter to exit...\n\n\tLog:");
+    let _ = std::io::stdin()
+        .read(&mut [0u8])
+        .expect("Failed to read from stdin for interrupt");
 
     // stop server
-    thread::sleep(Duration::from_secs(15));
+    println!("Stopping server...");
     server_handle.stop(true).await;
 
     Ok(())

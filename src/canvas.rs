@@ -69,24 +69,27 @@ impl CanvasAssignment {
 /// todo: doesn't account for quizzes
 #[derive(serde::Deserialize, Clone)]
 struct PartialCanvasTodo {
-    assignment: PartialCanvasAssignment,
+    assignment: Option<PartialCanvasAssignment>,
 }
 
 /// todo: doesn't account for quizzes (also leave a proper doc comment)
 pub struct CanvasTodo {
-    assignment: CanvasAssignment,
+    assignment: Option<CanvasAssignment>,
 }
 
 impl CanvasTodo {
     /// creates a new CanvasTodo from a PartialCanvasTodo
     fn new(partial: PartialCanvasTodo) -> anyhow::Result<CanvasTodo> {
         Ok(CanvasTodo {
-            assignment: CanvasAssignment::new(partial.assignment)?,
+            assignment: match partial.assignment {
+                Some(assignment) => Some(CanvasAssignment::new(assignment)?),
+                None => None,
+            },
         })
     }
 
     /// returns the to do's assignment
-    pub fn assignment(&self) -> CanvasAssignment {
+    pub fn assignment(&self) -> Option<CanvasAssignment> {
         self.assignment.clone()
     }
 }
